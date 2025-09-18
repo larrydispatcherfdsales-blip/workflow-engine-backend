@@ -1,0 +1,82 @@
+name: BPO WorkFlow Engine
+
+on:
+  workflow_dispatch:
+    inputs:
+      action:
+        description: 'Action to perform (fetch, submit, approve, reject)'
+        required: true
+        type: choice
+        options:
+          - fetch_task
+          - submit_for_qc
+          - approve_qc
+          - reject_qc
+      task_path:
+        description: 'Path of the task to act on (e.g., tasks/inprogress/task1.txt)'
+        required: false
+
+jobs:
+  manage_tasks:
+    runs-on: ubuntu-latest
+
+    steps:
+      # Step 1: Dono repositories ko checkout karna
+      - name: Checkout Backend Repo
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ github.repository }} # workflow-engine-backend
+          path: backend
+
+      - name: Checkout DB Repo
+        uses: actions/checkout@v4
+        with:
+          repository: chuh31481-wq/workflow-engine-db # DB repo ka address
+          path: db
+          token: ${{ secrets.DB_ACCESS_TOKEN }} # Isay hum agle step mein banayenge
+
+      # Step 2: Action ke mutabiq kaam karna
+      - name: Perform Action on Task
+        run: |
+          cd db # Hum DB repo ke andar kaam karenge
+
+          ACTION=${{ github.event.inputs.action }}
+          TASK_PATH=${{ github.event.inputs.task_path }}
+
+          if [ "$ACTION" == "fetch_task" ]; then
+            # 'todo' se pehla task dhoondo
+            TASK_TO_FETCH=$(find tasks/todo -type f | head -n 1)
+            if [ -z "$TASK_TO_FETCH" ]; then
+              echo "No tasks to fetch in 'todo' folder."
+              exit 1
+            fi
+            # Usay 'inprogress' mein move karo
+            NEW_PATH="tasks/inprogress/$(basename $TASK_TO_FETCH)"
+            git mv "$TASK_TO_FETCH" "$NEW_PATH"
+            echo "Fetched task: $TASK_TO_FETCH -> $NEW_PATH"
+            echo "::set-output name=new_task_path::$NEW_PATH"
+
+          elif [ "$ACTION" == "submit_for_qc" ]; then
+            # 'inprogress' se 'in_qc' mein move karo
+            NEW_PATH="tasks/in_qc/$(basename $TASK_PATH)"
+            git mv "$TASK_PATH" "$NEW_PATH"
+            echo "Submitted for QC: $TASK_PATH -> $NEW_PATH"
+
+          elif [ "$ACTION" == "approve_qc" ]; then
+            # 'in_qc' se 'completed' mein move karo
+            NEW_PATH="tasks/completed/$(basename $TASK_PATH)"
+            git mv "$TASK_PATH" "$NEW_PATH"
+            echo "Approved QC: $TASK_PATH -> $NEW_PATH"
+
+          elif [ "$ACTION" == "reject_qc" ]; then
+            # 'in_qc' se wapas 'todo' mein move karo
+            NEW_PATH="tasks/todo/$(basename $TASK_PATH)"
+            git mv "$TASK_PATH" "$NEW_PATH"
+            echo "Rejected QC: $TASK_PATH -> $NEW_PATH"
+          fi
+
+          # Step 3: Changes ko DB repo mein wapas push karna
+          git config user.name "GitHub Actions"
+          git config user.email "actions@github.com"
+          git commit -m "Workflow: $ACTION on task"
+          git push
