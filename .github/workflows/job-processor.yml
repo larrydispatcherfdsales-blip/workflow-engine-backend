@@ -3,6 +3,9 @@ name: BPO Job Processor
 on:
   workflow_dispatch:
     inputs:
+      client_folder:
+        description: 'The folder name of the client'
+        required: true
       job_name:
         description: 'Name of the job being processed'
         required: true
@@ -31,35 +34,30 @@ jobs:
           mkdir -p temp_zip
           echo "${{ github.event.inputs.zip_file_base64 }}" | base64 --decode > temp_zip/tasks.zip
 
-      - name: Unzip tasks into todo folder
-        working-directory: ./db/tasks/todo
-        run: |
-          unzip -o ../../../temp_zip/tasks.zip
-
-      # --- YEH NAYA STEP HAI ---
-      - name: Save Job Schema
-        # Yeh step sirf tab chalega agar schema_json khaali nahi hai
-        if: ${{ github.event.inputs.schema_json != '[]' && github.event.inputs.schema_json != '' }}
+      - name: Unzip tasks into client todo folder
         working-directory: ./db
         run: |
-          # 'jobs' ka folder banayein agar mojood nahi hai
-          mkdir -p jobs
-          # Schema ko uske job name ke sath save karein
-          echo '${{ github.event.inputs.schema_json }}' > "jobs/${{ github.event.inputs.job_name }}_schema.json"
+          CLIENT_FOLDER=${{ github.event.inputs.client_folder }}
+          mkdir -p "$CLIENT_FOLDER/tasks/todo"
+          unzip -o ../temp_zip/tasks.zip -d "$CLIENT_FOLDER/tasks/todo"
+
+      - name: Save Job Schema
+        if: github.event.inputs.schema_json != '[]'
+        working-directory: ./db
+        run: |
+          CLIENT_FOLDER=${{ github.event.inputs.client_folder }}
+          mkdir -p "$CLIENT_FOLDER/jobs"
+          echo '${{ github.event.inputs.schema_json }}' > "$CLIENT_FOLDER/jobs/${{ github.event.inputs.job_name }}_schema.json"
 
       - name: Commit and Push New Tasks and Schema
         working-directory: ./db
         run: |
           git config user.name "GitHub Actions Bot"
           git config user.email "actions-bot@github.com"
-          
-          # Tamam nayi files (tasks aur schema) ko add karna
           git add .
-          
           if ! git diff --staged --quiet; then
-            echo "New tasks/schema found. Committing and pushing..."
-            git commit -m "Job Upload: Added new tasks and schema for job '${{ github.event.inputs.job_name }}'"
+            git commit -m "Job Upload: Added tasks for job '${{ github.event.inputs.job_name }}' in client '${{ github.event.inputs.client_folder }}'"
             git push origin main
           else
-            echo "No new files to commit."
+            echo "No new content found to commit."
           fi
