@@ -12,6 +12,10 @@ on:
       form_data_json:
         description: 'JSON string of the data entered by the agent'
         required: true
+      triggered_by:
+        description: 'The GitHub username of the user who triggered the action'
+        required: false
+        default: 'system'
 
 jobs:
   run-ai-qc:
@@ -46,5 +50,6 @@ jobs:
             {
               "client_folder": "${{ github.event.inputs.client_folder }}",
               "task_path": "${{ github.event.inputs.task_path }}",
-              "qc_status": "${{ steps.ai_check.outputs.qc_status }}"
+              "qc_status": "${{ steps.ai_check.outputs.qc_status }}",
+              "triggered_by": "${{ github.event.inputs.triggered_by }}"
             }
