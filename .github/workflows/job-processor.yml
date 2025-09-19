@@ -1,0 +1,62 @@
+name: BPO Job Processor
+
+on:
+  # Is workflow ko sirf API se trigger kiya ja sakta hai
+  workflow_dispatch:
+    inputs:
+      job_name:
+        description: 'Name of the job being processed'
+        required: true
+      zip_file_base64:
+        description: 'Base64 encoded content of the uploaded ZIP file'
+        required: true
+
+jobs:
+  process-zip-file:
+    runs-on: ubuntu-latest
+
+    steps:
+      # Step 1: DB repo ko checkout karna taake hum ismein files daal sakein
+      - name: Checkout DB Repo
+        uses: actions/checkout@v4
+        with:
+          repository: larrydispatcherfdsales-blip/workflow-engine-db
+          path: db
+          token: ${{ secrets.DB_ACCESS_TOKEN }}
+          ref: main
+
+      # Step 2: ZIP file ko decode karke save karna
+      - name: Decode and Save ZIP file
+        run: |
+          # Ek temporary folder banayein
+          mkdir -p temp_zip
+          # Base64 content ko wapas ZIP file mein badalna
+          echo "${{ github.event.inputs.zip_file_base64 }}" | base64 --decode > temp_zip/tasks.zip
+
+      # Step 3: ZIP file ko 'todo' folder mein unzip karna
+      - name: Unzip tasks into todo folder
+        # working-directory set karna taake unzip sahi jagah par ho
+        working-directory: ./db/tasks/todo
+        run: |
+          # 'unzip' command runner mein pehle se install hoti hai
+          # -o flag ka matlab hai 'overwrite without asking'
+          unzip -o ../../../temp_zip/tasks.zip
+
+      # Step 4: Tabdeeliyon ko DB repo mein wapas push karna
+      - name: Commit and Push New Tasks
+        working-directory: ./db
+        run: |
+          git config user.name "GitHub Actions Bot"
+          git config user.email "actions-bot@github.com"
+          
+          # Tamam nayi files ko add karna
+          git add tasks/todo/
+          
+          # Check karein ke koi nayi files add hui hain ya nahi
+          if ! git diff --staged --quiet; then
+            echo "New tasks found. Committing and pushing..."
+            git commit -m "Job Upload: Added new tasks from job '${{ github.event.inputs.job_name }}'"
+            git push origin main
+          else
+            echo "No new tasks found in the ZIP file to commit."
+          fi
