@@ -4,19 +4,14 @@ on:
   workflow_dispatch:
     inputs:
       client_folder:
-        description: 'The folder name of the client'
         required: true
       job_name:
-        description: 'Name of the job being processed'
         required: true
       zip_file_base64:
-        description: 'Base64 encoded content of the uploaded ZIP file'
         required: true
       schema_json:
-        description: 'JSON string of the custom fields schema'
         required: false
       triggered_by:
-        description: 'The GitHub username of the user who triggered the action'
         required: false
         default: 'system'
 
@@ -46,7 +41,8 @@ jobs:
           unzip -o ../temp_zip/tasks.zip -d "$CLIENT_FOLDER/tasks/todo"
 
       - name: Save Job Schema
-        if: github.event.inputs.schema_json != '[]'
+        # Yeh step ab hamesha chalega, taake khaali schema bhi save ho sake
+        if: github.event.inputs.schema_json
         working-directory: ./db
         run: |
           CLIENT_FOLDER=${{ github.event.inputs.client_folder }}
