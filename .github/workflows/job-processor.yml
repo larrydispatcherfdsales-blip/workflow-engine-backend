@@ -15,6 +15,10 @@ on:
       schema_json:
         description: 'JSON string of the custom fields schema'
         required: false
+      triggered_by:
+        description: 'The GitHub username of the user who triggered the action'
+        required: false
+        default: 'system'
 
 jobs:
   process-zip-file:
@@ -52,11 +56,15 @@ jobs:
       - name: Commit and Push New Tasks and Schema
         working-directory: ./db
         run: |
-          git config user.name "GitHub Actions Bot"
-          git config user.email "actions-bot@github.com"
+          TRIGGERED_BY=${{ github.event.inputs.triggered_by }}
+          CLIENT_FOLDER=${{ github.event.inputs.client_folder }}
+          
+          git config user.name "$TRIGGERED_BY"
+          git config user.email "$TRIGGERED_BY@users.noreply.github.com"
+          
           git add .
           if ! git diff --staged --quiet; then
-            git commit -m "Job Upload: Added tasks for job '${{ github.event.inputs.job_name }}' in client '${{ github.event.inputs.client_folder }}'"
+            git commit -m "Job Upload: By $TRIGGERED_BY for job '${{ github.event.inputs.job_name }}' in client '$CLIENT_FOLDER'"
             git push origin main
           else
             echo "No new content found to commit."
