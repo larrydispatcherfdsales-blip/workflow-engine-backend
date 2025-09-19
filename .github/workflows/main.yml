@@ -32,14 +32,12 @@ jobs:
           repository: larrydispatcherfdsales-blip/workflow-engine-db
           path: db
           token: ${{ secrets.DB_ACCESS_TOKEN }}
-          # Hum yahan branch ka naam wazeh tor par bata rahe hain
-          ref: main 
+          ref: main
 
       - name: Perform Action and Push Changes
         id: perform_action
         working-directory: ./db
         run: |
-          # Git ko configure karna
           git config user.name "GitHub Actions Bot"
           git config user.email "actions-bot@github.com"
 
@@ -48,11 +46,10 @@ jobs:
 
           echo "Performing action: $ACTION"
 
-          # Action ke mutabiq file ko move karna
           if [ "$ACTION" == "fetch_task" ]; then
             TASK_TO_FETCH=$(find tasks/todo -type f -name "*.txt" | head -n 1)
             if [ -z "$TASK_TO_FETCH" ]; then
-              echo "No tasks to fetch in 'todo' folder."
+              echo "No tasks to fetch."
               exit 0
             fi
             mkdir -p tasks/inprogress
@@ -60,18 +57,19 @@ jobs:
             git mv "$TASK_TO_FETCH" "$NEW_PATH"
             echo "Fetched task: $TASK_TO_FETCH and moved to $NEW_PATH"
             echo "new_task_path=$NEW_PATH" >> $GITHUB_OUTPUT
+          fi
           
           # (Yahan baqi actions ka logic aayega)
 
-          fi
-
           # --- YAHAN ASAL TABDEELI HAI ---
-          # Check karein ke koi tabdeeli hui hai ya nahi
-          if ! git diff --quiet --exit-code; then
+          # Tamam tabdeeliyon ko "stage" karna
+          git add .
+
+          # Check karein ke koi staged changes hain ya nahi
+          if ! git diff --staged --quiet; then
             echo "Changes detected. Committing and pushing..."
-            git commit -m "Workflow: Performed '$ACTION' on task"
-            # Zabardasti 'main' branch par push karna
-            git push origin HEAD:main
+            git commit -m "Workflow: Performed '$ACTION'"
+            git push origin main
           else
             echo "No changes to commit."
           fi
