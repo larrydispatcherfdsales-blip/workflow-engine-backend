@@ -4,16 +4,15 @@ on:
   workflow_dispatch:
     inputs:
       action:
-        description: 'Action to perform (fetch, submit, approve, reject)'
+        description: 'Action to perform'
         required: true
         type: choice
-        options:
-          - fetch_task
-          - submit_for_qc
-          - approve_qc
-          - reject_qc
+        options: [fetch_task, submit_for_qc, approve_qc, reject_qc]
       task_path:
-        description: 'Path of the task to act on (e.g., tasks/inprogress/task1.txt)'
+        description: 'Path of the task to act on'
+        required: false
+      form_data_json:
+        description: 'JSON data from the agent form'
         required: false
 
 jobs:
@@ -23,11 +22,6 @@ jobs:
       fetched_task_path: ${{ steps.perform_action.outputs.new_task_path }}
 
     steps:
-      - name: Checkout Backend Repo
-        uses: actions/checkout@v4
-        with:
-          path: backend
-
       - name: Checkout DB Repo
         uses: actions/checkout@v4
         with:
@@ -58,10 +52,20 @@ jobs:
 
           elif [ "$ACTION" == "submit_for_qc" ]; then
             if [ -z "$TASK_PATH" ]; then echo "Error: task_path is required."; exit 1; fi
+            
+            # --- YEH NAYA HISSA HAI ---
+            # Agent ke form data ko ek alag file mein save karna
+            if [[ "${{ github.event.inputs.form_data_json }}" != "{}" && "${{ github.event.inputs.form_data_json }}" != "" ]]; then
+              mkdir -p data
+              TASK_BASENAME=$(basename "$TASK_PATH" .txt)
+              echo '${{ github.event.inputs.form_data_json }}' > "data/${TASK_BASENAME}_data.json"
+            fi
+            
             mkdir -p tasks/in_qc
             NEW_PATH="tasks/in_qc/$(basename $TASK_PATH)"
             git mv "$TASK_PATH" "$NEW_PATH"
-
+          
+          # (approve_qc aur reject_qc ka logic waisa hi rahega)
           elif [ "$ACTION" == "approve_qc" ]; then
             if [ -z "$TASK_PATH" ]; then echo "Error: task_path is required."; exit 1; fi
             mkdir -p tasks/completed
