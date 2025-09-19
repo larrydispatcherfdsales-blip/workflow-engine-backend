@@ -1,7 +1,6 @@
 name: BPO WorkFlow Engine
 
 on:
-  # Trigger #1: API se (Frontend se)
   workflow_dispatch:
     inputs:
       client_folder:
@@ -16,8 +15,6 @@ on:
       form_data_json:
         description: 'JSON string of the data entered by the agent'
         required: false
-
-  # Trigger #2: AI Workflow se
   repository_dispatch:
     types: [post-ai-qc-action]
 
@@ -43,12 +40,11 @@ jobs:
           git config user.name "GitHub Actions Bot"
           git config user.email "actions-bot@github.com"
 
-          # Step 1: Client ka folder name haasil karna
           if [ "${{ github.event_name }}" == "repository_dispatch" ]; then
             CLIENT_FOLDER=${{ github.event.client_payload.client_folder }}
             TASK_PATH=${{ github.event.client_payload.task_path }}
             QC_STATUS=${{ github.event.client_payload.qc_status }}
-            ACTION="ai_qc_result" # AI se anay wale action ko ek naam de diya
+            ACTION="ai_qc_result"
           else
             CLIENT_FOLDER=${{ github.event.inputs.client_folder }}
             ACTION=${{ github.event.inputs.action }}
@@ -56,10 +52,8 @@ jobs:
             FORM_DATA=${{ github.event.inputs.form_data_json }}
           fi
 
-          echo "Processing for client: $CLIENT_FOLDER"
-          echo "Action: $ACTION"
+          echo "Processing for client: $CLIENT_FOLDER | Action: $ACTION"
 
-          # Step 2: Action ke mutabiq kaam karna (ab har path CLIENT_FOLDER ke sath hai)
           if [ "$ACTION" == "fetch_task" ]; then
             TASK_TO_FETCH=$(find "$CLIENT_FOLDER/tasks/todo" -type f -name "*.txt" | head -n 1)
             if [ -z "$TASK_TO_FETCH" ]; then echo "No tasks to fetch for $CLIENT_FOLDER."; exit 0; fi
@@ -67,7 +61,6 @@ jobs:
             NEW_PATH="$CLIENT_FOLDER/tasks/inprogress/$(basename $TASK_TO_FETCH)"
             git mv "$TASK_TO_FETCH" "$NEW_PATH"
             echo "new_task_path=$NEW_PATH" >> $GITHUB_OUTPUT
-
           elif [ "$ACTION" == "submit_for_qc" ]; then
             if [ -z "$TASK_PATH" ]; then echo "Error: task_path is required."; exit 1; fi
             if [[ ! -z "$FORM_DATA" && "$FORM_DATA" != "{}" ]]; then
@@ -75,8 +68,6 @@ jobs:
               DATA_FILE_NAME=$(basename "$TASK_PATH" .txt).json
               echo "$FORM_DATA" > "$CLIENT_FOLDER/data/$DATA_FILE_NAME"
             fi
-            # File move karne ka kaam ab AI karega
-
           elif [ "$ACTION" == "ai_qc_result" ]; then
             if [ "$QC_STATUS" == "passed" ]; then
               mkdir -p "$CLIENT_FOLDER/tasks/completed"
@@ -89,7 +80,6 @@ jobs:
             fi
           fi
 
-          # Step 3: Tamam tabdeeliyon ko push karna
           git add .
           if ! git diff --staged --quiet; then
             git commit -m "Workflow: Processed task for $CLIENT_FOLDER"
