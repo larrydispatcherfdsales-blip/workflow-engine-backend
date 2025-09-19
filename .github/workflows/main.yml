@@ -4,6 +4,9 @@ on:
   # Trigger #1: API se (Frontend se)
   workflow_dispatch:
     inputs:
+      client_folder:
+        description: 'The folder name of the client (e.g., client_A_demo)'
+        required: true
       action:
         description: 'Action to perform'
         required: true
@@ -14,7 +17,7 @@ on:
         description: 'JSON string of the data entered by the agent'
         required: false
 
-  # Trigger #2: Naya Trigger - AI Workflow se
+  # Trigger #2: AI Workflow se
   repository_dispatch:
     types: [post-ai-qc-action]
 
@@ -40,70 +43,56 @@ jobs:
           git config user.name "GitHub Actions Bot"
           git config user.email "actions-bot@github.com"
 
-          # Pehle check karo ke trigger kahan se aaya hai
+          # Step 1: Client ka folder name haasil karna
           if [ "${{ github.event_name }}" == "repository_dispatch" ]; then
-            # Agar AI se trigger hua hai
-            echo "Action triggered by AI QC."
+            CLIENT_FOLDER=${{ github.event.client_payload.client_folder }}
             TASK_PATH=${{ github.event.client_payload.task_path }}
             QC_STATUS=${{ github.event.client_payload.qc_status }}
-
-            if [ "$QC_STATUS" == "passed" ]; then
-              echo "AI QC Passed. Moving task to 'completed'."
-              mkdir -p tasks/completed
-              NEW_PATH="tasks/completed/$(basename $TASK_PATH)"
-              git mv "$TASK_PATH" "$NEW_PATH"
-            else
-              echo "AI QC Failed. Moving task back to 'todo'."
-              mkdir -p tasks/todo
-              NEW_PATH="tasks/todo/$(basename $TASK_PATH)"
-              git mv "$TASK_PATH" "$NEW_PATH"
-            fi
-
+            ACTION="ai_qc_result" # AI se anay wale action ko ek naam de diya
           else
-            # Agar API (Frontend) se trigger hua hai
+            CLIENT_FOLDER=${{ github.event.inputs.client_folder }}
             ACTION=${{ github.event.inputs.action }}
             TASK_PATH=${{ github.event.inputs.task_path }}
             FORM_DATA=${{ github.event.inputs.form_data_json }}
+          fi
 
-            echo "Action triggered by API: $ACTION"
+          echo "Processing for client: $CLIENT_FOLDER"
+          echo "Action: $ACTION"
 
-            if [ "$ACTION" == "fetch_task" ]; then
-              TASK_TO_FETCH=$(find tasks/todo -type f -name "*.txt" | head -n 1)
-              if [ -z "$TASK_TO_FETCH" ]; then echo "No tasks to fetch."; exit 0; fi
-              mkdir -p tasks/inprogress
-              NEW_PATH="tasks/inprogress/$(basename $TASK_TO_FETCH)"
-              git mv "$TASK_TO_FETCH" "$NEW_PATH"
-              echo "new_task_path=$NEW_PATH" >> $GITHUB_OUTPUT
+          # Step 2: Action ke mutabiq kaam karna (ab har path CLIENT_FOLDER ke sath hai)
+          if [ "$ACTION" == "fetch_task" ]; then
+            TASK_TO_FETCH=$(find "$CLIENT_FOLDER/tasks/todo" -type f -name "*.txt" | head -n 1)
+            if [ -z "$TASK_TO_FETCH" ]; then echo "No tasks to fetch for $CLIENT_FOLDER."; exit 0; fi
+            mkdir -p "$CLIENT_FOLDER/tasks/inprogress"
+            NEW_PATH="$CLIENT_FOLDER/tasks/inprogress/$(basename $TASK_TO_FETCH)"
+            git mv "$TASK_TO_FETCH" "$NEW_PATH"
+            echo "new_task_path=$NEW_PATH" >> $GITHUB_OUTPUT
 
-            elif [ "$ACTION" == "submit_for_qc" ]; then
-              # Yeh action ab sirf data save karega, file move nahi karega
-              if [[ ! -z "$FORM_DATA" && "$FORM_DATA" != "{}" ]]; then
-                mkdir -p data
-                DATA_FILE_NAME=$(basename "$TASK_PATH" .txt).json
-                echo "$FORM_DATA" > "data/$DATA_FILE_NAME"
-                echo "Form data saved for $TASK_PATH"
-              fi
-              # File move karne ka kaam ab AI karega
-            
-            # (approve_qc aur reject_qc ab manual QC ke liye hain)
-            elif [ "$ACTION" == "approve_qc" ]; then
-              if [ -z "$TASK_PATH" ]; then echo "Error: task_path is required."; exit 1; fi
-              mkdir -p tasks/completed
-              NEW_PATH="tasks/completed/$(basename $TASK_PATH)"
+          elif [ "$ACTION" == "submit_for_qc" ]; then
+            if [ -z "$TASK_PATH" ]; then echo "Error: task_path is required."; exit 1; fi
+            if [[ ! -z "$FORM_DATA" && "$FORM_DATA" != "{}" ]]; then
+              mkdir -p "$CLIENT_FOLDER/data"
+              DATA_FILE_NAME=$(basename "$TASK_PATH" .txt).json
+              echo "$FORM_DATA" > "$CLIENT_FOLDER/data/$DATA_FILE_NAME"
+            fi
+            # File move karne ka kaam ab AI karega
+
+          elif [ "$ACTION" == "ai_qc_result" ]; then
+            if [ "$QC_STATUS" == "passed" ]; then
+              mkdir -p "$CLIENT_FOLDER/tasks/completed"
+              NEW_PATH="$CLIENT_FOLDER/tasks/completed/$(basename $TASK_PATH)"
               git mv "$TASK_PATH" "$NEW_PATH"
-
-            elif [ "$ACTION" == "reject_qc" ]; then
-              if [ -z "$TASK_PATH" ]; then echo "Error: task_path is required."; exit 1; fi
-              mkdir -p tasks/todo
-              NEW_PATH="tasks/todo/$(basename $TASK_PATH)"
+            else
+              mkdir -p "$CLIENT_FOLDER/tasks/todo"
+              NEW_PATH="$CLIENT_FOLDER/tasks/todo/$(basename $TASK_PATH)"
               git mv "$TASK_PATH" "$NEW_PATH"
             fi
           fi
 
-          # Aakhir mein, tamam tabdeeliyon ko push karna
+          # Step 3: Tamam tabdeeliyon ko push karna
           git add .
           if ! git diff --staged --quiet; then
-            git commit -m "Workflow: Auto-processed task based on trigger"
+            git commit -m "Workflow: Processed task for $CLIENT_FOLDER"
             git push origin main
           else
             echo "No changes to commit."
