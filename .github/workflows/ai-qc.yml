@@ -1,0 +1,59 @@
+name: AI Quality Check
+
+on:
+  # Is workflow ko sirf API se trigger kiya ja sakta hai
+  workflow_dispatch:
+    inputs:
+      task_path:
+        description: 'Path of the task to check'
+        required: true
+      form_data_json:
+        description: 'JSON string of the data entered by the agent'
+        required: true
+      qc_rules:
+        description: 'Rules for the AI to check against'
+        required: true
+
+jobs:
+  run-ai-qc:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Call AwanLLM for QC
+        id: ai_check
+        run: |
+          # AwanLLM API ko call karna
+          API_RESPONSE=$(curl -s -X POST "https://api.awanllm.com/v1/chat/completions" \
+            -H "Content-Type: application/json" \
+            -H "Authorization: Bearer ${{ secrets.AWANLLM_API_KEY }}" \
+            -d '{
+              "model": "Awan-Llama-13B-Chat-v1",
+              "messages": [
+                {
+                  "role": "system",
+                  "content": "You are a strict Quality Control bot. Your only job is to check if the provided JSON data follows the given rules. Respond with only one word: PASSED or FAILED."
+                },
+                {
+                  "role": "user",
+                  "content": "Here are the rules: ${{ github.event.inputs.qc_rules }}. Here is the data to check: ${{ github.event.inputs.form_data_json }}. Does this data pass the rules?"
+                }
+              ]
+            }' )
+          
+          # API se anay wale jawab ko saaf karna
+          AI_RESULT=$(echo "$API_RESPONSE" | jq -r '.choices[0].message.content' | tr '[:upper:]' '[:lower:]' | xargs)
+          
+          echo "AI Result: $AI_RESULT"
+          echo "qc_status=$AI_RESULT" >> $GITHUB_OUTPUT
+
+      - name: Trigger Main Workflow based on AI result
+        uses: peter-evans/repository-dispatch@v3
+        with:
+          token: ${{ secrets.DB_ACCESS_TOKEN }} # Hum DB token istemal kar sakte hain
+          repository: ${{ github.repository }} # Isi backend repo ko trigger karna hai
+          event-type: post-ai-qc-action
+          client-payload: >
+            {
+              "task_path": "${{ github.event.inputs.task_path }}",
+              "qc_status": "${{ steps.ai_check.outputs.qc_status }}"
+            }
