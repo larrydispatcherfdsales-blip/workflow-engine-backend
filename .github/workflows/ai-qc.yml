@@ -21,7 +21,6 @@ jobs:
       - name: Call AwanLLM for QC
         id: ai_check
         run: |
-          # ... (Yeh poora step bilkul waisa hi rahega jaisa pehle tha) ...
           API_RESPONSE_FILE=$(mktemp)
           curl -s -X POST "https://api.awanllm.com/v1/chat/completions" \
             -H "Content-Type: application/json" \
