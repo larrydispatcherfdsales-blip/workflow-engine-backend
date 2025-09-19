@@ -19,27 +19,27 @@ on:
 jobs:
   manage_tasks:
     runs-on: ubuntu-latest
-    # --- YEH NAYA HISSA ADD KAREIN ---
-    # Job ke outputs ko define karna
-    outputs:
-      fetched_task_path: ${{ steps.perform_action.outputs.new_task_path }}
 
     steps:
+      # Step 1: Backend repo ko checkout karna (Optional, lekin achi practice hai)
       - name: Checkout Backend Repo
         uses: actions/checkout@v4
         with:
           path: backend
 
+      # Step 2: DB repo ko checkout karna (Sab se ahem step)
       - name: Checkout DB Repo
         uses: actions/checkout@v4
         with:
-          repository: chuh31481-wq/workflow-engine-db
+          # Yaqeen karein ke yeh aapke DB repo ka sahi address hai
+          repository: larrydispatcherfdsales-blip/workflow-engine-db
           path: db
+          # Yeh aapke banaye hue secret se asli token (ghp_...) haasil karega
           token: ${{ secrets.DB_ACCESS_TOKEN }}
 
-      # --- IS STEP KO EK ID DENI HAI ---
+      # Step 3: Action ke mutabiq kaam karna
       - name: Perform Action on Task
-        id: perform_action # Is step ko ek ID de di
+        id: perform_action
         working-directory: ./db
         run: |
           ACTION=${{ github.event.inputs.action }}
@@ -50,29 +50,44 @@ jobs:
           if [ "$ACTION" == "fetch_task" ]; then
             TASK_TO_FETCH=$(find tasks/todo -type f | head -n 1)
             if [ -z "$TASK_TO_FETCH" ]; then
-              echo "No tasks to fetch."
+              echo "No tasks to fetch in 'todo' folder."
               exit 0
             fi
             mkdir -p tasks/inprogress
             NEW_PATH="tasks/inprogress/$(basename $TASK_TO_FETCH)"
             git mv "$TASK_TO_FETCH" "$NEW_PATH"
             echo "Fetched task: $TASK_TO_FETCH and moved to $NEW_PATH"
-            # --- YAHAN ASAL TABDEELI HAI ---
-            # Fetched task ka path output variable mein set karna
             echo "new_task_path=$NEW_PATH" >> $GITHUB_OUTPUT
 
-          # ... (baqi if conditions waisi hi rahengi) ...
           elif [ "$ACTION" == "submit_for_qc" ]; then
-            # ...
+            if [ -z "$TASK_PATH" ]; then echo "Error: task_path is required for this action."; exit 1; fi
+            mkdir -p tasks/in_qc
+            NEW_PATH="tasks/in_qc/$(basename $TASK_PATH)"
+            git mv "$TASK_PATH" "$NEW_PATH"
+            echo "Submitted for QC: $TASK_PATH -> $NEW_PATH"
+
+          elif [ "$ACTION" == "approve_qc" ]; then
+            if [ -z "$TASK_PATH" ]; then echo "Error: task_path is required for this action."; exit 1; fi
+            mkdir -p tasks/completed
+            NEW_PATH="tasks/completed/$(basename $TASK_PATH)"
+            git mv "$TASK_PATH" "$NEW_PATH"
+            echo "Approved QC: $TASK_PATH -> $NEW_PATH"
+
+          elif [ "$ACTION" == "reject_qc" ]; then
+            if [ -z "$TASK_PATH" ]; then echo "Error: task_path is required for this action."; exit 1; fi
+            mkdir -p tasks/todo
+            NEW_PATH="tasks/todo/$(basename $TASK_PATH)"
+            git mv "$TASK_PATH" "$NEW_PATH"
+            echo "Rejected QC: $TASK_PATH -> $NEW_PATH"
           fi
 
-          # Changes ko push karna
+          # Step 4: Changes ko DB repo mein wapas push karna
           git config user.name "GitHub Actions Bot"
           git config user.email "actions-bot@github.com"
-          if ! git diff --quiet; then
+          # Check karein ke koi tabdeeli hui hai ya nahi, phir hi commit/push karein
+          if ! git diff --quiet --exit-code; then
             git commit -m "Workflow: Performed '$ACTION'"
             git push
           else
             echo "No changes to commit."
           fi
-
