@@ -3,6 +3,9 @@ name: AI Quality Check
 on:
   workflow_dispatch:
     inputs:
+      client_folder:
+        description: 'The folder name of the client'
+        required: true
       task_path:
         description: 'Path of the task to check'
         required: true
@@ -15,46 +18,34 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      # Step 1: AwanLLM API ko call karke data check karna
       - name: Call AwanLLM for QC
         id: ai_check
         run: |
-          # API se anay wale jawab ko saaf karne ke liye, hum usay ek file mein save karenge
+          # ... (Yeh poora step bilkul waisa hi rahega jaisa pehle tha) ...
           API_RESPONSE_FILE=$(mktemp)
-
-          # AwanLLM API ko call karna
           curl -s -X POST "https://api.awanllm.com/v1/chat/completions" \
             -H "Content-Type: application/json" \
             -H "Authorization: Bearer ${{ secrets.AWANLLM_API_KEY }}" \
             -d '{
               "model": "Awan-Llama-13B-Chat-v1",
               "messages": [
-                {
-                  "role": "system",
-                  "content": "You are a strict Quality Control bot. Your only job is to check if the provided JSON data is valid. Check if all values are non-empty. Respond with only one word in lowercase: passed or failed."
-                },
-                {
-                  "role": "user",
-                  "content": "Here is the data to check: ${{ github.event.inputs.form_data_json }}. Does this data pass the rules?"
-                }
+                { "role": "system", "content": "You are a strict QC bot. Check if all JSON values are non-empty. Respond with only one word in lowercase: passed or failed." },
+                { "role": "user", "content": "Data to check: ${{ github.event.inputs.form_data_json }}. Does this data pass?" }
               ]
             }' > "$API_RESPONSE_FILE"
-          
-          # API se anay wale jawab ko saaf karna
           AI_RESULT=$(cat "$API_RESPONSE_FILE" | jq -r '.choices[0].message.content' | tr '[:upper:]' '[:lower:]' | xargs )
-          
           echo "AI Result: $AI_RESULT"
           echo "qc_status=$AI_RESULT" >> $GITHUB_OUTPUT
 
-      # Step 2: AI ke result ki buniyad par main.yml ko trigger karna
       - name: Trigger Main Workflow based on AI result
         uses: peter-evans/repository-dispatch@v3
         with:
           token: ${{ secrets.DB_ACCESS_TOKEN }}
           repository: ${{ github.repository }}
-          event-type: post-ai-qc-action # Ek naya event type
+          event-type: post-ai-qc-action
           client-payload: >
             {
+              "client_folder": "${{ github.event.inputs.client_folder }}",
               "task_path": "${{ github.event.inputs.task_path }}",
               "qc_status": "${{ steps.ai_check.outputs.qc_status }}"
             }
