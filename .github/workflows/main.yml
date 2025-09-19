@@ -19,6 +19,8 @@ on:
 jobs:
   manage_tasks:
     runs-on: ubuntu-latest
+    outputs:
+      fetched_task_path: ${{ steps.perform_action.outputs.new_task_path }}
 
     steps:
       - name: Checkout Backend Repo
@@ -48,26 +50,33 @@ jobs:
 
           if [ "$ACTION" == "fetch_task" ]; then
             TASK_TO_FETCH=$(find tasks/todo -type f -name "*.txt" | head -n 1)
-            if [ -z "$TASK_TO_FETCH" ]; then
-              echo "No tasks to fetch."
-              exit 0
-            fi
+            if [ -z "$TASK_TO_FETCH" ]; then echo "No tasks to fetch."; exit 0; fi
             mkdir -p tasks/inprogress
             NEW_PATH="tasks/inprogress/$(basename $TASK_TO_FETCH)"
             git mv "$TASK_TO_FETCH" "$NEW_PATH"
-            echo "Fetched task: $TASK_TO_FETCH and moved to $NEW_PATH"
             echo "new_task_path=$NEW_PATH" >> $GITHUB_OUTPUT
+
+          elif [ "$ACTION" == "submit_for_qc" ]; then
+            if [ -z "$TASK_PATH" ]; then echo "Error: task_path is required."; exit 1; fi
+            mkdir -p tasks/in_qc
+            NEW_PATH="tasks/in_qc/$(basename $TASK_PATH)"
+            git mv "$TASK_PATH" "$NEW_PATH"
+
+          elif [ "$ACTION" == "approve_qc" ]; then
+            if [ -z "$TASK_PATH" ]; then echo "Error: task_path is required."; exit 1; fi
+            mkdir -p tasks/completed
+            NEW_PATH="tasks/completed/$(basename $TASK_PATH)"
+            git mv "$TASK_PATH" "$NEW_PATH"
+
+          elif [ "$ACTION" == "reject_qc" ]; then
+            if [ -z "$TASK_PATH" ]; then echo "Error: task_path is required."; exit 1; fi
+            mkdir -p tasks/todo
+            NEW_PATH="tasks/todo/$(basename $TASK_PATH)"
+            git mv "$TASK_PATH" "$NEW_PATH"
           fi
-          
-          # (Yahan baqi actions ka logic aayega)
 
-          # --- YAHAN ASAL TABDEELI HAI ---
-          # Tamam tabdeeliyon ko "stage" karna
           git add .
-
-          # Check karein ke koi staged changes hain ya nahi
           if ! git diff --staged --quiet; then
-            echo "Changes detected. Committing and pushing..."
             git commit -m "Workflow: Performed '$ACTION'"
             git push origin main
           else
