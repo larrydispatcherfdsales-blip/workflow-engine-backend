@@ -1,7 +1,6 @@
 name: AI Quality Check
 
 on:
-  # Is workflow ko sirf API se trigger kiya ja sakta hai
   workflow_dispatch:
     inputs:
       task_path:
@@ -10,20 +9,21 @@ on:
       form_data_json:
         description: 'JSON string of the data entered by the agent'
         required: true
-      qc_rules:
-        description: 'Rules for the AI to check against'
-        required: true
 
 jobs:
   run-ai-qc:
     runs-on: ubuntu-latest
 
     steps:
+      # Step 1: AwanLLM API ko call karke data check karna
       - name: Call AwanLLM for QC
         id: ai_check
         run: |
+          # API se anay wale jawab ko saaf karne ke liye, hum usay ek file mein save karenge
+          API_RESPONSE_FILE=$(mktemp)
+
           # AwanLLM API ko call karna
-          API_RESPONSE=$(curl -s -X POST "https://api.awanllm.com/v1/chat/completions" \
+          curl -s -X POST "https://api.awanllm.com/v1/chat/completions" \
             -H "Content-Type: application/json" \
             -H "Authorization: Bearer ${{ secrets.AWANLLM_API_KEY }}" \
             -d '{
@@ -31,27 +31,28 @@ jobs:
               "messages": [
                 {
                   "role": "system",
-                  "content": "You are a strict Quality Control bot. Your only job is to check if the provided JSON data follows the given rules. Respond with only one word: PASSED or FAILED."
+                  "content": "You are a strict Quality Control bot. Your only job is to check if the provided JSON data is valid. Check if all values are non-empty. Respond with only one word in lowercase: passed or failed."
                 },
                 {
                   "role": "user",
-                  "content": "Here are the rules: ${{ github.event.inputs.qc_rules }}. Here is the data to check: ${{ github.event.inputs.form_data_json }}. Does this data pass the rules?"
+                  "content": "Here is the data to check: ${{ github.event.inputs.form_data_json }}. Does this data pass the rules?"
                 }
               ]
-            }' )
+            }' > "$API_RESPONSE_FILE"
           
           # API se anay wale jawab ko saaf karna
-          AI_RESULT=$(echo "$API_RESPONSE" | jq -r '.choices[0].message.content' | tr '[:upper:]' '[:lower:]' | xargs)
+          AI_RESULT=$(cat "$API_RESPONSE_FILE" | jq -r '.choices[0].message.content' | tr '[:upper:]' '[:lower:]' | xargs )
           
           echo "AI Result: $AI_RESULT"
           echo "qc_status=$AI_RESULT" >> $GITHUB_OUTPUT
 
+      # Step 2: AI ke result ki buniyad par main.yml ko trigger karna
       - name: Trigger Main Workflow based on AI result
         uses: peter-evans/repository-dispatch@v3
         with:
-          token: ${{ secrets.DB_ACCESS_TOKEN }} # Hum DB token istemal kar sakte hain
-          repository: ${{ github.repository }} # Isi backend repo ko trigger karna hai
-          event-type: post-ai-qc-action
+          token: ${{ secrets.DB_ACCESS_TOKEN }}
+          repository: ${{ github.repository }}
+          event-type: post-ai-qc-action # Ek naya event type
           client-payload: >
             {
               "task_path": "${{ github.event.inputs.task_path }}",
